@@ -32,7 +32,7 @@
     </dependencies>
 
     <build>
-        <finalName>kafka-producer</finalName>
+        <finalName>log-tailer</finalName>
 
         <plugins>
             <plugin>
