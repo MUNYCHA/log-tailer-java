@@ -31,16 +31,24 @@ public class ConfigLoader {
 
         File externalFile = new File(filePath);
 
-        if (externalFile.exists()) {
-            System.out.println(
-                    "[ConfigLoader] Loading EXTERNAL config: " + externalFile.getAbsolutePath()
-            );
+        // Prefer external file if it exists and is a regular file
+        if (externalFile.isFile()) {
             return new FileInputStream(externalFile);
         }
 
-        System.out.println(
-                "[ConfigLoader] External config not found. Loading INTERNAL config: " + filePath
-        );
-        return getClass().getClassLoader().getResourceAsStream(filePath);
+        // Fallback to classpath resource
+        InputStream internalStream =
+                getClass().getClassLoader().getResourceAsStream(filePath);
+
+        if (internalStream != null) {
+            System.out.println(
+                    "[ConfigLoader] External config not found, using INTERNAL config: " + filePath
+            );
+            return internalStream;
+        }
+
+        // Neither external nor internal exists
+        return null;
     }
+
 }

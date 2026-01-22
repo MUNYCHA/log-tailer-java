@@ -3,6 +3,7 @@ package org.munycha.logTailer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.munycha.logTailer.config.AppConfig;
 import org.munycha.logTailer.config.ConfigLoader;
+import org.munycha.logTailer.config.ConfigPathResolver;
 import org.munycha.logTailer.config.LogFileConfig;
 import org.munycha.logTailer.producer.LogTailer;
 import org.munycha.logTailer.producer.KafkaProducerFactory;
@@ -21,7 +22,10 @@ public class AppMain {
     public static void main(String[] args) throws Exception {
 
         // Load config ONCE
-        ConfigLoader loader = new ConfigLoader("config/logTailer_config.json");
+        String configPath = ConfigPathResolver.resolve(args);
+
+        System.out.println("[Config] Using config path: " + configPath);
+        ConfigLoader loader = new ConfigLoader(configPath);
         AppConfig config = loader.load();
 
         // Kafka producer
