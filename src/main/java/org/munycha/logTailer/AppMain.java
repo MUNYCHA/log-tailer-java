@@ -21,7 +21,7 @@ public class AppMain {
     public static void main(String[] args) throws Exception {
 
         // Load config ONCE
-        ConfigLoader loader = new ConfigLoader("config/producer_config.json");
+        ConfigLoader loader = new ConfigLoader("config/logTailer_config.json");
         AppConfig config = loader.load();
 
         // Kafka producer
