@@ -22,9 +22,15 @@ public class AppMain {
     public static void main(String[] args) throws Exception {
 
         // Load config ONCE
-        String configPath = ConfigPathResolver.resolve(args);
+        String configPath = ConfigPathResolver.resolve(
+                args,
+                "LOGTAILER_CONFIG",          // ENV var
+                "logtailer.config",                 // JVM system property
+                "config/logTailer_config.json"      // classpath default
+        );
 
         System.out.println("[Config] Using config path: " + configPath);
+
         ConfigLoader loader = new ConfigLoader(configPath);
         AppConfig config = loader.load();
 

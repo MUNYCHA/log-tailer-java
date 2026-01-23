@@ -2,36 +2,36 @@ package org.munycha.logTailer.config;
 
 public final class ConfigPathResolver {
 
-    private static final String ENV_KEY = "LOGTAILER_CONFIG";
-    private static final String SYS_PROP_KEY = "logtailer.config";
-    private static final String DEFAULT_PATH = "config/logTailer_config.json";
-    private static final String ARG_PREFIX = "--config";
-
     private ConfigPathResolver() {
     }
 
-    public static String resolve(String[] args) {
+    public static String resolve(
+            String[] args,
+            String envKey,
+            String sysPropKey,
+            String defaultPath
+    ) {
 
-        // 1. CLI arguments (highest priority)
+        // 1. CLI arguments
         String cliPath = resolveFromArgs(args);
         if (cliPath != null) {
             return cliPath;
         }
 
         // 2. Environment variable
-        String envPath = System.getenv(ENV_KEY);
+        String envPath = System.getenv(envKey);
         if (envPath != null && !envPath.isBlank()) {
             return envPath;
         }
 
         // 3. JVM system property
-        String sysPropPath = System.getProperty(SYS_PROP_KEY);
+        String sysPropPath = System.getProperty(sysPropKey);
         if (sysPropPath != null && !sysPropPath.isBlank()) {
             return sysPropPath;
         }
 
         // 4. Default
-        return DEFAULT_PATH;
+        return defaultPath;
     }
 
     private static String resolveFromArgs(String[] args) {
@@ -43,17 +43,14 @@ public final class ConfigPathResolver {
         for (int i = 0; i < args.length; i++) {
             String arg = args[i];
 
-            // --config=/path/to/file
-            if (arg.startsWith(ARG_PREFIX + "=")) {
-                return arg.substring((ARG_PREFIX + "=").length());
+            if (arg.startsWith("--config=")) {
+                return arg.substring("--config=".length());
             }
 
-            // --config /path/to/file
-            if (arg.equals(ARG_PREFIX) && i + 1 < args.length) {
+            if (arg.equals("--config") && i + 1 < args.length) {
                 return args[i + 1];
             }
 
-            // positional argument (fallback)
             if (!arg.startsWith("-") && !arg.isBlank()) {
                 return arg;
             }
