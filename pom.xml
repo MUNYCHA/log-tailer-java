@@ -9,11 +9,6 @@
     <artifactId>kafkaProducerApp</artifactId>
     <version>1.0</version>
 
-    <properties>
-        <java.version>8</java.version>
-        <maven.compiler.release>8</maven.compiler.release>
-    </properties>
-
     <dependencies>
         <!-- Kafka client (Java 8 compatible) -->
         <dependency>
@@ -29,7 +24,7 @@
             <version>2.13.5</version>
         </dependency>
 
-        <!-- SLF4J simple -->
+        <!-- SLF4J simple (Java 8 compatible) -->
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-simple</artifactId>
@@ -41,7 +36,7 @@
         <finalName>log-tailer</finalName>
 
         <plugins>
-            <!-- Java 8 compiler -->
+            <!-- Java 8 compiler (CORRECT WAY) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -52,7 +47,6 @@
                     <encoding>UTF-8</encoding>
                 </configuration>
             </plugin>
-
 
             <!-- Shade plugin -->
             <plugin>
@@ -76,6 +70,7 @@
                     </execution>
                 </executions>
             </plugin>
+
         </plugins>
     </build>
 
