@@ -156,11 +156,14 @@ public class LogTailer implements Runnable {
                     .replace("\r", "")
                     .trim();
 
-            if (msg.isBlank()) continue;
+            if (msg.isEmpty()) {
+                continue;
+            }
 
             sendToKafka(msg);
         }
     }
+
 
     private void sendToKafka(String msg) {
         try {
