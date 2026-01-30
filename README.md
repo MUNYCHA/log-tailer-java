@@ -1,148 +1,213 @@
 
----
+````md
+# log-tailer
 
-# ⚙️ Kafka File Log Producer
+**log-tailer** is a **Java 8–compatible log tailing and system monitoring application** that publishes data to **Apache Kafka**.
 
-A lightweight Java-based log ingestion service that **monitors local log files** in real time and streams every new line directly into **Kafka topics**.
-Each file is mapped to a Kafka topic (e.g., `app1.log` → `app1-topic`), enabling flexible and scalable log forwarding.
-
----
-
-## 🧩 How It Works
-
-1. The application reads **`config.json`**, which defines:
-
-   * Kafka bootstrap servers
-   * Files to watch
-   * Target Kafka topics for each file
-
-2. Before starting, the app uses **`KafkaTopicValidator`** to confirm all Kafka topics exist.
-
-3. A **dedicated thread** is launched for each file.
-
-4. Each thread continuously:
-
-   * Watches the file for newly appended lines
-   * Sends each new line to the specified Kafka topic
-
-5. The program runs indefinitely until manually stopped.
+It provides:
+- Continuous tailing of multiple log files and publishing entries to Kafka topics
+- Periodic server storage usage snapshots
+- Consistent system and server identity attached to every message
 
 ---
 
-## 📁 Example `config.json`
+## Requirements
 
-```json
-{
-  "bootstrapServers": "192.168.60.135:9092",
-  "files": [
-    { "path": "/home/kafkaproducer/log_file/app1.log", "topic": "app1-topic" },
-    { "path": "/home/kafkaproducer/log_file/app2.log", "topic": "app2-topic" },
-    { "path": "/home/kafkaproducer/log_file/system.log", "topic": "system-topic" }
-  ]
-}
-```
+- **Java:** 1.8 (Java 8)
+- **Build tool:** Maven 3.6+
+- **Kafka:** Reachable Kafka broker
+- **OS:** Linux (paths and log tailing are Linux-oriented)
 
-### ➕ Add More Files
-
-Just add a new entry:
-
-```json
-{ "path": "/home/kafkaproducer/log_file/newapp.log", "topic": "newapp-topic" }
-```
-
-Restart the app and it will automatically begin monitoring the new file.
+Verify Java:
+```bash
+java -version
+````
 
 ---
 
-## 🧰 Requirements
-
-* **Java 17+**
-* **Apache Kafka 4.x** running on your server
-* Kafka topics created (validated at startup)
-* Read permissions on the watched log files
-
----
-
-## ▶️ Running the Application
-
-### 1. Build the JAR
+## Build
 
 ```bash
 mvn clean package
 ```
 
-### 2. Run the JAR
+### Output
+
+```text
+target/log-tailer.jar
+```
+
+---
+
+## Run
 
 ```bash
-java -jar target/KafkaProducerApp-1.0.jar
+java -jar /path/to/log-tailer.jar --config=/path/to/config/config.json
 ```
 
-### Example Console Output
+### Example
 
-```
-[21:02:42] Validated topic exists: app1-topic
-[21:02:42] Validated topic exists: app2-topic
-[21:02:45] Watching file: /home/kafkaproducer/log_file/app1.log -> Topic: app1-topic
-[21:02:50] Topic: app1-topic Sent message: INFO Application started
+```bash
+java -jar target/log-tailer.jar --config=./config/config.json
 ```
 
-Press **Ctrl + C** to stop gracefully.
+> The application requires an external JSON configuration file.
 
 ---
 
-## 🧠 Project Structure
+## Configuration Overview
+
+The application is configured using **one JSON file**.
+
+### Example: `config.json`
+
+```json
+{
+  "bootstrapServers": "192.168.60.135:9092",
+
+  "identity": {
+    "system": {
+      "id": "system-E",
+      "name": "ប្រព័ន្ធគ្រប់គ្រងទិន្នន័យប្រាក់ខែបុគ្គលិក"
+    },
+    "server": {
+      "name": "linux-mint-vm",
+      "ip": "192.168.60.11"
+    }
+  },
+
+  "logTailer": {
+    "enabled": true,
+    "files": [
+      { "path": "/data/input/logs/app1.log", "topic": "app1-topic" },
+      { "path": "/data/input/logs/app2.log", "topic": "app2-topic" },
+      { "path": "/data/input/logs/app3.log", "topic": "app3-topic" },
+      { "path": "/data/input/logs/app4.log", "topic": "app4-topic" },
+      { "path": "/data/input/logs/system.log", "topic": "system-topic" },
+      { "path": "/data/input/logs/server.log", "topic": "server-topic" }
+    ]
+  },
+
+  "storageMonitoring": {
+    "enabled": true,
+    "topic": "server-storage-snapshot",
+    "paths": [
+      "/",
+      "/mnt/data-pressure",
+      "/mnt/medium-usage",
+      "/mnt/high-usage",
+      "/run"
+    ],
+    "intervalHours": 12
+  }
+}
+```
+
+---
+
+## Configuration Details
+
+### Kafka Connection
+
+```json
+"bootstrapServers": "192.168.60.135:9092"
+```
+
+* Kafka bootstrap server list
+* Used by all Kafka producers in the application
+
+---
+
+### Identity
+
+Metadata attached to every Kafka message.
+
+* **System**
+
+   * `id`: Logical system identifier
+   * `name`: Human-readable system name (Unicode supported)
+
+* **Server**
+
+   * `name`: Server hostname
+   * `ip`: Server IP address
+
+---
+
+### Log Tailer
+
+When enabled:
+
+* Each configured file is tailed continuously
+* New log entries are published to the assigned Kafka topic
+
+Fields:
+
+* `path`: Absolute path to the log file
+* `topic`: Kafka topic receiving log events
+
+---
+
+### Storage Monitoring
+
+When enabled:
+
+* Disk usage snapshots are collected periodically
+* Snapshots are published to Kafka
+
+Fields:
+
+* `topic`: Kafka topic for storage metrics
+* `paths`: Directories or mount points to monitor
+* `intervalHours`: Snapshot interval in hours
+
+---
+
+## Kafka Topics Used
+
+| Purpose           | Topic                            |
+| ----------------- | -------------------------------- |
+| Application logs  | `app1-topic`, `app2-topic`, etc. |
+| System logs       | `system-topic`, `server-topic`   |
+| Storage snapshots | `server-storage-snapshot`        |
+
+---
+
+## Java Compatibility
+
+* Compiled with **Java 8**
+* Bytecode target: **Java 8**
+* Runs on Java 8 runtime without additional flags
+
+---
+
+## Notes
+
+* Log files must exist and be readable
+* Kafka topics must exist or auto-creation must be enabled
+* All paths are evaluated on the local server only
+
+---
+
+## Typical Use Cases
+
+* Centralized log aggregation
+* Infrastructure and disk monitoring
+* Feeding logs and metrics into Kafka pipelines
+* Lightweight alternative to full log agents
+
+---
+
+## License
+
+Specify your license here (e.g. Internal, Proprietary, Apache 2.0).
+
+---
+
+## Maintainer
+
+* **Project:** log-tailer
+* **Runtime:** Java 8
+* **Build:** Maven
 
 ```
-src/
- └── main/
-     ├── java/
-     │   └── org/munycha/kafkaproducer/
-     │       ├── AppMain.java                       # Program entry point
-     │       ├── config/
-     │       │   ├── ConfigLoader.java              # Reads and parses config.json
-     │       │   ├── ConfigData.java                # Represents full config
-     │       │   └── FileItem.java                  # One file/topic mapping
-     │       ├── producer/
-     │       │   ├── FileWatcher.java               # Watches file + sends logs to Kafka
-     │       │   └── KafkaFactory.java              # Creates KafkaProducer instance
-     │       └── utility/
-     │           └── KafkaTopicValidator.java       # Validates Kafka topics before startup
-     └── resources/
-         ├── config.json                            # Main application configuration
-         └── simplelogger.properties                # Controls SLF4J logging levels
-
-```
-
----
-
-## 🧩 Class Overview
-
-| Class                   | Purpose                                                                |
-|-------------------------| ---------------------------------------------------------------------- |
-| **AppMain**             | Loads configuration, validates topics, and starts all watcher threads  |
-| **FileWatcher**         | Streams new log lines to Kafka (tail-like behavior)                    |
-| **KafkaFactory**        | Creates and configures Kafka producers                                 |
-| **ConfigLoader**        | Reads `config.json` using Jackson                                      |
-| **ConfigData**          | Represents full configuration (bootstrap + file list)                  |
-| **FileItem**            | Represents a single file → topic assignment                            |
-| **KafkaTopicValidator** | Checks if Kafka topics exist before startup; prevents misconfiguration |
-
----
-
-## 💡 Tips & Best Practices
-
-* Keep `config.json` inside `src/main/resources` for packaging convenience.
-* Ensure log files **exist before starting** the producer.
-* Use this producer with your **Kafka File Log Consumer** to build a full E2E log pipeline.
-* If you change topics or file paths, update `config.json` and restart the app.
-
----
-
-## 🧑‍💻 Author
-
-**Munycha**
-Kafka Learning Project — Java + Apache Kafka (Real-Time File Watcher Producer)
-
----
-
-
