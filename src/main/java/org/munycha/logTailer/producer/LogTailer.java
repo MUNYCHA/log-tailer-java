@@ -47,83 +47,63 @@ public class LogTailer implements Runnable {
             return;
         }
 
-        Path directory = filePath.getParent();
+        System.out.printf("Tailing file (polling): %s -> Topic: %s%n", filePath, topic);
 
-        try (
-                WatchService watchService = FileSystems.getDefault().newWatchService();
-                RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "r")
-        ) {
+        RandomAccessFile raf = null;
 
-            directory.register(
-                    watchService,
-                    StandardWatchEventKinds.ENTRY_MODIFY,
-                    StandardWatchEventKinds.ENTRY_DELETE,
-                    StandardWatchEventKinds.ENTRY_CREATE
-            );
+        try {
+            raf = new RandomAccessFile(filePath.toFile(), "r");
 
-            filePointer = raf.length(); // tail behavior
-            System.out.printf("Watching file (WatchService): %s -> Topic: %s%n", filePath, topic);
+            // Start at end (tail -f behavior)
+            filePointer = raf.length();
 
             while (!Thread.currentThread().isInterrupted()) {
 
-                WatchKey key;
-                try {
-                    key = watchService.take(); // blocks
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
+                // File disappeared (rotation or delete)
+                if (!Files.exists(filePath)) {
+                    filePointer = 0;
+                    lineBuffer.setLength(0);
+
+                    // Wait until file reappears
+                    Thread.sleep(500);
+                    continue;
                 }
 
-                for (WatchEvent<?> event : key.pollEvents()) {
+                long length = raf.length();
 
-                    WatchEvent.Kind<?> kind = event.kind();
-                    Path changed = directory.resolve((Path) event.context());
-
-                    if (!changed.equals(filePath)) {
-                        continue;
-                    }
-
-                    // File deleted (rotation or manual delete)
-                    if (kind == StandardWatchEventKinds.ENTRY_DELETE) {
-                        filePointer = 0;
-                        lineBuffer.setLength(0);
-                        continue;
-                    }
-
-                    // File created (rotation recreated)
-                    if (kind == StandardWatchEventKinds.ENTRY_CREATE) {
-                        filePointer = 0;
-                        lineBuffer.setLength(0);
-                    }
-
-                    // File modified
-                    if (kind == StandardWatchEventKinds.ENTRY_MODIFY) {
-
-                        long length = raf.length();
-
-                        // Truncation or rotation
-                        if (length < filePointer) {
-                            filePointer = 0;
-                            lineBuffer.setLength(0);
-                        }
-
-                        if (length > filePointer) {
-                            raf.seek(filePointer);
-                            readNewBytes(raf);
-                            filePointer = raf.getFilePointer();
-                        }
-                    }
+                // File truncated or rotated
+                if (length < filePointer) {
+                    raf.close();
+                    raf = new RandomAccessFile(filePath.toFile(), "r");
+                    filePointer = 0;
+                    lineBuffer.setLength(0);
                 }
 
-                if (!key.reset()) {
-                    break;
+                // New data available
+                if (length > filePointer) {
+                    raf.seek(filePointer);
+                    readNewBytes(raf);
+                    filePointer = raf.getFilePointer();
                 }
+
+                // Poll interval (like tail -f)
+                Thread.sleep(200);
             }
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
 
         } catch (Exception e) {
             e.printStackTrace();
+
+        } finally {
+            try {
+                if (raf != null) raf.close();
+            } catch (Exception ignored) {
+            }
         }
     }
+
 
     /**
      * Reads bytes safely, decodes UTF-8, buffers partial lines.
