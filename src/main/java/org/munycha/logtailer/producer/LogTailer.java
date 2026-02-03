@@ -1,9 +1,9 @@
-package org.munycha.logTailer.producer;
+package org.munycha.logtailer.producer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.munycha.logTailer.model.LogEvent;
+import org.munycha.logtailer.model.LogEvent;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;

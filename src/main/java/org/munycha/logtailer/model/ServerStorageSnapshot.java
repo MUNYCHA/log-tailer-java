@@ -1,4 +1,4 @@
-package org.munycha.logTailer.model;
+package org.munycha.logtailer.model;
 
 import java.util.List;
 

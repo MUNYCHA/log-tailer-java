@@ -1,13 +1,13 @@
-package org.munycha.logTailer;
+package org.munycha.logtailer;
 
 import org.apache.kafka.clients.producer.KafkaProducer;
-import org.munycha.logTailer.config.AppConfig;
-import org.munycha.logTailer.config.ConfigLoader;
-import org.munycha.logTailer.config.ConfigPathResolver;
-import org.munycha.logTailer.config.LogFileConfig;
-import org.munycha.logTailer.producer.LogTailer;
-import org.munycha.logTailer.producer.KafkaProducerFactory;
-import org.munycha.logTailer.producer.ServerStorageMonitor;
+import org.munycha.logtailer.config.AppConfig;
+import org.munycha.logtailer.config.ConfigLoader;
+import org.munycha.logtailer.config.ConfigPathResolver;
+import org.munycha.logtailer.config.LogFileConfig;
+import org.munycha.logtailer.producer.LogTailer;
+import org.munycha.logtailer.producer.KafkaProducerFactory;
+import org.munycha.logtailer.producer.ServerStorageMonitor;
 
 import java.nio.file.Paths;
 import java.util.List;

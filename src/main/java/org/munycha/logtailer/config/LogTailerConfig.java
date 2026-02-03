@@ -1,4 +1,4 @@
-package org.munycha.logTailer.config;
+package org.munycha.logtailer.config;
 
 import java.util.List;
 

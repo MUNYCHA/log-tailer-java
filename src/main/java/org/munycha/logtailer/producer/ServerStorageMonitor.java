@@ -1,11 +1,11 @@
-package org.munycha.logTailer.producer;
+package org.munycha.logtailer.producer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.munycha.logTailer.config.AppConfig;
-import org.munycha.logTailer.model.MountPathStorageUsage;
-import org.munycha.logTailer.model.ServerStorageSnapshot;
+import org.munycha.logtailer.config.AppConfig;
+import org.munycha.logtailer.model.MountPathStorageUsage;
+import org.munycha.logtailer.model.ServerStorageSnapshot;
 
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;

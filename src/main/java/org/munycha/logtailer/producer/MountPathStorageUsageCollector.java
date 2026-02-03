@@ -1,6 +1,6 @@
-package org.munycha.logTailer.producer;
+package org.munycha.logtailer.producer;
 
-import org.munycha.logTailer.model.MountPathStorageUsage;
+import org.munycha.logtailer.model.MountPathStorageUsage;
 
 import java.nio.file.*;
 import java.util.ArrayList;
