@@ -167,8 +167,6 @@ public class LogTailer implements Runnable {
                                     topic,
                                     ex.getMessage()
                             );
-                        }else{
-                            System.out.printf("[%s] Topic: %-15s Sent log: %s%n",java.time.LocalDateTime.now(), topic, msg);
                         }
                     }
             );
