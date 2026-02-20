@@ -108,5 +108,7 @@ public class AppMain {
             producer.close();
         }));
 
+        new java.util.concurrent.CountDownLatch(1).await();
+
     }
 }
