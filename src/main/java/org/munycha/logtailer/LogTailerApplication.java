@@ -11,7 +11,6 @@ import org.munycha.logtailer.service.StorageMonitorTask;
 
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -52,7 +51,6 @@ public class LogTailerApplication {
             }
 
             logTailerExecutor = Executors.newCachedThreadPool();
-            Properties producerProps = factory.getProducerProps();
 
             for (LogFileConfig f : files) {
                 logTailerExecutor.submit(
@@ -60,8 +58,7 @@ public class LogTailerApplication {
                                 Paths.get(f.getPath()),
                                 f.getTopic(),
                                 config.getIdentity().getServer().getName(),
-                                producer,
-                                producerProps
+                                producer
                         )
                 );
             }
