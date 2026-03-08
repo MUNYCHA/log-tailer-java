@@ -16,7 +16,15 @@ public class LogFileConfig {
         return path;
     }
 
+    public void setPath(String path) {
+        this.path = path;
+    }
+
     public String getTopic() {
         return topic;
+    }
+
+    public void setTopic(String topic) {
+        this.topic = topic;
     }
 }

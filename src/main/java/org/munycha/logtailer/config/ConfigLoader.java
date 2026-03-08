@@ -1,10 +1,18 @@
 package org.munycha.logtailer.config;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 
 public class ConfigLoader {
+
+    private static final Logger log = LoggerFactory.getLogger(ConfigLoader.class);
+
+    private static final ObjectMapper mapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private final String filePath;
 
@@ -14,8 +22,9 @@ public class ConfigLoader {
 
     public AppConfig load() throws IOException {
         try (InputStream inputStream = loadConfigFile(filePath)) {
-            ObjectMapper mapper = new ObjectMapper();
-            return mapper.readValue(inputStream, AppConfig.class);
+            AppConfig config = mapper.readValue(inputStream, AppConfig.class);
+            config.validate();
+            return config;
         }
     }
 
@@ -31,9 +40,7 @@ public class ConfigLoader {
                 getClass().getClassLoader().getResourceAsStream(filePath);
 
         if (internalStream != null) {
-            System.out.println(
-                    "[ConfigLoader] External config not found, using INTERNAL config: " + filePath
-            );
+            log.warn("External config not found, using internal classpath config: {}", filePath);
             return internalStream;
         }
 
