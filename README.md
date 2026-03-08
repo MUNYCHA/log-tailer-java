@@ -1,27 +1,27 @@
-
-````md
 # log-tailer
 
-**log-tailer** is a **Java 8–compatible log tailing and system monitoring application** that publishes data to **Apache Kafka**.
+**log-tailer** is a lightweight, **Java 8-compatible** application that tails log files and collects server storage metrics, publishing everything to **Apache Kafka**.
 
 It provides:
-- Continuous tailing of multiple log files and publishing entries to Kafka topics
-- Periodic server storage usage snapshots
-- Consistent system and server identity attached to every message
+- Continuous tailing of multiple log files → Kafka topics
+- Periodic disk usage snapshots → Kafka topic
+- System and server identity attached to every message
 
 ---
 
 ## Requirements
 
-- **Java:** 1.8 (Java 8)
-- **Build tool:** Maven 3.6+
-- **Kafka:** Reachable Kafka broker
-- **OS:** Linux (paths and log tailing are Linux-oriented)
+| Requirement | Version |
+|-------------|---------|
+| Java        | 8 (1.8) or higher |
+| Maven       | 3.6+    |
+| Kafka       | Reachable broker  |
+| OS          | Linux (paths and tailing are Linux-oriented) |
 
-Verify Java:
+Verify Java version:
 ```bash
 java -version
-````
+```
 
 ---
 
@@ -31,9 +31,9 @@ java -version
 mvn clean package
 ```
 
-### Output
+Produces a fat JAR at:
 
-```text
+```
 target/log-tailer.jar
 ```
 
@@ -42,24 +42,23 @@ target/log-tailer.jar
 ## Run
 
 ```bash
-java -jar /path/to/log-tailer.jar --config=/path/to/config/config.json
+java -jar target/log-tailer.jar --config=/path/to/config.json
 ```
 
-### Example
+### Config path resolution (in priority order)
 
-```bash
-java -jar target/log-tailer.jar --config=./config/config.json
-```
-
-> The application requires an external JSON configuration file.
+1. CLI argument: `--config=/path/to/config.json`
+2. Environment variable: `LOG_TAILER_CONFIG=/path/to/config.json`
+3. JVM property: `-Dlog.tailer.config=/path/to/config.json`
+4. Default: `config/config.json` (relative to working directory)
 
 ---
 
-## Configuration Overview
+## Configuration
 
-The application is configured using **one JSON file**.
+The application reads a single JSON file.
 
-### Example: `config.json`
+### Full example — `config.json`
 
 ```json
 {
@@ -68,7 +67,7 @@ The application is configured using **one JSON file**.
   "identity": {
     "system": {
       "id": "system-E",
-      "name": "ប្រព័ន្ធគ្រប់គ្រងទិន្នន័យប្រាក់ខែបុគ្គលិក"
+      "name": "My System Name"
     },
     "server": {
       "name": "linux-mint-vm",
@@ -79,12 +78,8 @@ The application is configured using **one JSON file**.
   "logTailer": {
     "enabled": true,
     "files": [
-      { "path": "/data/input/logs/app1.log", "topic": "app1-topic" },
-      { "path": "/data/input/logs/app2.log", "topic": "app2-topic" },
-      { "path": "/data/input/logs/app3.log", "topic": "app3-topic" },
-      { "path": "/data/input/logs/app4.log", "topic": "app4-topic" },
-      { "path": "/data/input/logs/system.log", "topic": "system-topic" },
-      { "path": "/data/input/logs/server.log", "topic": "server-topic" }
+      { "path": "/var/log/app/app.log",    "topic": "app-logs" },
+      { "path": "/var/log/app/system.log", "topic": "system-logs" }
     ]
   },
 
@@ -93,121 +88,106 @@ The application is configured using **one JSON file**.
     "topic": "server-storage-snapshot",
     "paths": [
       "/",
-      "/mnt/data-pressure",
-      "/mnt/medium-usage",
-      "/mnt/high-usage",
-      "/run"
+      "/mnt/data"
     ],
     "intervalHours": 12
   }
 }
 ```
 
+### Fields reference
+
+#### `bootstrapServers`
+Kafka broker address(es). Used by all producers.
+
+#### `identity`
+Metadata stamped on every Kafka message.
+
+| Field | Description |
+|-------|-------------|
+| `identity.system.id` | Logical system identifier |
+| `identity.system.name` | Human-readable system name (Unicode supported) |
+| `identity.server.name` | Server hostname |
+| `identity.server.ip` | Server IP address |
+
+#### `logTailer`
+
+| Field | Description |
+|-------|-------------|
+| `enabled` | Enable or disable log tailing |
+| `files[].path` | Absolute path to the log file |
+| `files[].topic` | Kafka topic to publish log events to |
+
+- One thread is spawned per configured file
+- If a log file does not exist yet, the tailer waits for it to appear
+- File rotation and truncation are handled automatically
+
+#### `storageMonitoring`
+
+| Field | Description |
+|-------|-------------|
+| `enabled` | Enable or disable storage monitoring |
+| `topic` | Kafka topic to publish snapshots to |
+| `paths` | List of directories or mount points to measure |
+| `intervalHours` | How often to collect and publish a snapshot |
+
 ---
 
-## Configuration Details
+## Kafka message formats
 
-### Kafka Connection
+### Log event (logTailer)
 
 ```json
-"bootstrapServers": "192.168.60.135:9092"
+{
+  "serverName": "linux-mint-vm",
+  "path": "/var/log/app/app.log",
+  "topic": "app-logs",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "message": "INFO  Application started"
+}
 ```
 
-* Kafka bootstrap server list
-* Used by all Kafka producers in the application
+### Storage snapshot (storageMonitoring)
+
+```json
+{
+  "systemId": "system-E",
+  "systemName": "My System Name",
+  "serverName": "linux-mint-vm",
+  "serverIp": "192.168.60.11",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "diskUsages": [
+    {
+      "path": "/",
+      "totalBytes": 107374182400,
+      "usedBytes": 32212254720,
+      "usedPercent": 30.0
+    }
+  ]
+}
+```
 
 ---
 
-### Identity
+## Environment variables
 
-Metadata attached to every Kafka message.
-
-* **System**
-
-   * `id`: Logical system identifier
-   * `name`: Human-readable system name (Unicode supported)
-
-* **Server**
-
-   * `name`: Server hostname
-   * `ip`: Server IP address
+| Variable | Description |
+|----------|-------------|
+| `LOG_TAILER_CONFIG` | Path to config JSON (alternative to CLI arg) |
+| `HOST_FS` | Filesystem prefix for containerized environments (e.g. `/host`). When set, storage paths are resolved as `HOST_FS + path` so the host filesystem can be measured from inside a container. |
 
 ---
 
-### Log Tailer
+## Dependencies
 
-When enabled:
-
-* Each configured file is tailed continuously
-* New log entries are published to the assigned Kafka topic
-
-Fields:
-
-* `path`: Absolute path to the log file
-* `topic`: Kafka topic receiving log events
-
----
-
-### Storage Monitoring
-
-When enabled:
-
-* Disk usage snapshots are collected periodically
-* Snapshots are published to Kafka
-
-Fields:
-
-* `topic`: Kafka topic for storage metrics
-* `paths`: Directories or mount points to monitor
-* `intervalHours`: Snapshot interval in hours
-
----
-
-## Kafka Topics Used
-
-| Purpose           | Topic                            |
-| ----------------- | -------------------------------- |
-| Application logs  | `app1-topic`, `app2-topic`, etc. |
-| System logs       | `system-topic`, `server-topic`   |
-| Storage snapshots | `server-storage-snapshot`        |
-
----
-
-## Java Compatibility
-
-* Compiled with **Java 8**
-* Bytecode target: **Java 8**
-* Runs on Java 8 runtime without additional flags
-
----
-
-## Notes
-
-* Log files must exist and be readable
-* Kafka topics must exist or auto-creation must be enabled
-* All paths are evaluated on the local server only
-
----
-
-## Typical Use Cases
-
-* Centralized log aggregation
-* Infrastructure and disk monitoring
-* Feeding logs and metrics into Kafka pipelines
-* Lightweight alternative to full log agents
+| Library | Version | Purpose |
+|---------|---------|---------|
+| `kafka-clients` | 3.7.1 | Kafka producer |
+| `jackson-databind` | 2.15.4 | JSON serialization |
+| `slf4j-simple` | 1.7.36 | Logging |
 
 ---
 
 ## License
 
-Specify your license here (e.g. Internal, Proprietary, Apache 2.0).
-
----
-
-## Maintainer
-
-* **Project:** log-tailer
-* **Runtime:** Java 8
-* **Build:** Maven
-
-```
+Internal / Proprietary — specify your license here.

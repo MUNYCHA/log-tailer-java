@@ -1,6 +1,8 @@
 package org.munycha.logtailer.service;
 
 import org.munycha.logtailer.model.DiskUsage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.file.*;
 import java.util.ArrayList;
@@ -8,6 +10,7 @@ import java.util.List;
 
 public class DiskUsageCollector {
 
+    private static final Logger log = LoggerFactory.getLogger(DiskUsageCollector.class);
 
     private static final String HOST_FS =
             System.getenv().getOrDefault("HOST_FS", "");
@@ -19,14 +22,15 @@ public class DiskUsageCollector {
             try {
                 Path realPath = resolvePath(p);
                 if (!Files.exists(realPath)) {
+                    log.warn("Storage path does not exist, skipping | path={}", realPath);
                     continue;
                 }
 
                 FileStore store = Files.getFileStore(realPath);
 
                 long total = store.getTotalSpace();
-                long usable = store.getUsableSpace();
-                long used = total - usable;
+                long free  = store.getUnallocatedSpace();   // total free bytes including OS-reserved blocks
+                long used  = total - free;
                 double usedPercent = total > 0
                         ? (double) used * 100.0 / total
                         : 0.0;
@@ -39,7 +43,8 @@ public class DiskUsageCollector {
 
                 result.add(ps);
 
-            } catch (Exception ignored) {
+            } catch (Exception e) {
+                log.warn("Failed to collect disk usage | path={}", p, e);
             }
         }
         return result;
