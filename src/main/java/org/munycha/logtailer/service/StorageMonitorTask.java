@@ -6,12 +6,17 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.munycha.logtailer.config.AppConfig;
 import org.munycha.logtailer.model.DiskUsage;
 import org.munycha.logtailer.model.ServerStorageSnapshot;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 public class StorageMonitorTask implements Runnable {
+
+    private static final Logger log = LoggerFactory.getLogger(StorageMonitorTask.class);
+
     private final KafkaProducer<String, String> producer;
     private final AppConfig config;
 
@@ -49,12 +54,8 @@ public class StorageMonitorTask implements Runnable {
 
             producer.send(record, (metadata, exception) -> {
                 if (exception != null) {
-                    System.err.println(
-                            "FAILED TO SEND SERVER STORAGE SNAPSHOT | "
-                                    + "server=" + serverStorageSnapshot.getServerName()
-                                    + " | topic=" + record.topic()
-                    );
-                    exception.printStackTrace();
+                    log.error("Failed to deliver storage snapshot | server={} topic={}",
+                            serverStorageSnapshot.getServerName(), record.topic(), exception);
                 }
             });
 
@@ -62,7 +63,7 @@ public class StorageMonitorTask implements Runnable {
             producer.flush();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Failed to collect or send storage snapshot", e);
         }
     }
 }

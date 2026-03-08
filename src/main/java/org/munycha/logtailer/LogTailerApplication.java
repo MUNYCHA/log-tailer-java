@@ -50,7 +50,7 @@ public class LogTailerApplication {
                 throw new IllegalStateException("LogTailer enabled but no files configured");
             }
 
-            logTailerExecutor = Executors.newCachedThreadPool();
+            logTailerExecutor = Executors.newFixedThreadPool(files.size());
 
             for (LogFileConfig f : files) {
                 logTailerExecutor.submit(
@@ -88,16 +88,21 @@ public class LogTailerApplication {
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 
-            System.out.println("Shutting down services...");
+            // Signal all worker threads to stop
+            if (finalStorageScheduler != null) finalStorageScheduler.shutdownNow();
+            if (finalExecutorService != null) finalExecutorService.shutdownNow();
 
-            if (finalStorageScheduler != null) {
-                finalStorageScheduler.shutdownNow();
+            // Wait for threads to finish before touching the shared producer
+            try {
+                if (finalExecutorService != null)
+                    finalExecutorService.awaitTermination(10, TimeUnit.SECONDS);
+                if (finalStorageScheduler != null)
+                    finalStorageScheduler.awaitTermination(5, TimeUnit.SECONDS);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
             }
 
-            if (finalExecutorService != null) {
-                finalExecutorService.shutdownNow();
-            }
-
+            // Safe to flush and close now — no worker thread is sending anymore
             try {
                 producer.flush();
             } catch (Exception ignored) {}
