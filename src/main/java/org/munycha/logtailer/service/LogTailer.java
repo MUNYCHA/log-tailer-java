@@ -1,4 +1,4 @@
-package org.munycha.logtailer.producer;
+package org.munycha.logtailer.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.producer.KafkaProducer;

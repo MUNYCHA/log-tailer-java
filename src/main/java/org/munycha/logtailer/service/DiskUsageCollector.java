@@ -1,19 +1,19 @@
-package org.munycha.logtailer.producer;
+package org.munycha.logtailer.service;
 
-import org.munycha.logtailer.model.MountPathStorageUsage;
+import org.munycha.logtailer.model.DiskUsage;
 
 import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MountPathStorageUsageCollector {
+public class DiskUsageCollector {
 
 
     private static final String HOST_FS =
             System.getenv().getOrDefault("HOST_FS", "");
 
-    public static List<MountPathStorageUsage> collect(List<String> paths) {
-        List<MountPathStorageUsage> result = new ArrayList<>();
+    public static List<DiskUsage> collect(List<String> paths) {
+        List<DiskUsage> result = new ArrayList<>();
 
         for (String p : paths) {
             try {
@@ -31,7 +31,7 @@ public class MountPathStorageUsageCollector {
                         ? (double) used * 100.0 / total
                         : 0.0;
 
-                MountPathStorageUsage ps = new MountPathStorageUsage();
+                DiskUsage ps = new DiskUsage();
                 ps.setPath(p);
                 ps.setTotalBytes(total);
                 ps.setUsedBytes(used);

@@ -5,9 +5,9 @@ import org.munycha.logtailer.config.AppConfig;
 import org.munycha.logtailer.config.ConfigLoader;
 import org.munycha.logtailer.config.ConfigPathResolver;
 import org.munycha.logtailer.config.LogFileConfig;
-import org.munycha.logtailer.producer.LogTailer;
-import org.munycha.logtailer.producer.KafkaProducerFactory;
-import org.munycha.logtailer.producer.ServerStorageMonitor;
+import org.munycha.logtailer.service.LogTailer;
+import org.munycha.logtailer.service.KafkaProducerFactory;
+import org.munycha.logtailer.service.StorageMonitorTask;
 
 import java.nio.file.Paths;
 import java.util.List;
@@ -17,7 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-public class AppMain {
+public class LogTailerApplication {
 
     public static void main(String[] args) throws Exception {
 
@@ -77,7 +77,7 @@ public class AppMain {
             storageScheduler = Executors.newSingleThreadScheduledExecutor();
 
             storageScheduler.scheduleAtFixedRate(
-                    new ServerStorageMonitor(producer, config),
+                    new StorageMonitorTask(producer, config),
                     0,
                     config.getStorageMonitoring().getIntervalHours(),
                     TimeUnit.HOURS

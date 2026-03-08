@@ -1,15 +1,15 @@
 package org.munycha.logtailer.model;
 
-public class MountPathStorageUsage {
+public class DiskUsage {
     private String path;
     private long totalBytes;
     private long usedBytes;
     private double usedPercent;
 
-    public MountPathStorageUsage() {
+    public DiskUsage() {
     }
 
-    public MountPathStorageUsage(String path, long totalBytes, long usedBytes, double usedPercent) {
+    public DiskUsage(String path, long totalBytes, long usedBytes, double usedPercent) {
         this.path = path;
         this.totalBytes = totalBytes;
         this.usedBytes = usedBytes;

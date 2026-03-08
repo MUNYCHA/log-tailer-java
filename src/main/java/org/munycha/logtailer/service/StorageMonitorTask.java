@@ -1,23 +1,23 @@
-package org.munycha.logtailer.producer;
+package org.munycha.logtailer.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.munycha.logtailer.config.AppConfig;
-import org.munycha.logtailer.model.MountPathStorageUsage;
+import org.munycha.logtailer.model.DiskUsage;
 import org.munycha.logtailer.model.ServerStorageSnapshot;
 
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-public class ServerStorageMonitor implements Runnable {
+public class StorageMonitorTask implements Runnable {
     private final KafkaProducer<String, String> producer;
     private final AppConfig config;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public ServerStorageMonitor(KafkaProducer<String,String> producer, AppConfig config){
+    public StorageMonitorTask(KafkaProducer<String,String> producer, AppConfig config){
         this.producer = producer;
         this.config = config;
     }
@@ -25,7 +25,7 @@ public class ServerStorageMonitor implements Runnable {
     @Override
     public void run() {
         try {
-            List<MountPathStorageUsage> mountPathStorageUsages = MountPathStorageUsageCollector.collect(this.config.getStorageMonitoring().getPaths());
+            List<DiskUsage> mountPathStorageUsages = DiskUsageCollector.collect(this.config.getStorageMonitoring().getPaths());
 
             ServerStorageSnapshot serverStorageSnapshot = new ServerStorageSnapshot();
             serverStorageSnapshot.setSystemId(config.getIdentity().getSystem().getId());
@@ -36,7 +36,7 @@ public class ServerStorageMonitor implements Runnable {
             String timestamp = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
 
             serverStorageSnapshot.setTimestamp(timestamp);
-            serverStorageSnapshot.setMountPathStorageUsages(mountPathStorageUsages);
+            serverStorageSnapshot.setDiskUsages(mountPathStorageUsages);
 
             String json = mapper.writeValueAsString(serverStorageSnapshot);
 

@@ -8,12 +8,12 @@ public class ServerStorageSnapshot {
     private String serverName;
     private String serverIp;
     private String timestamp;
-    private List<MountPathStorageUsage> mountPathStorageUsages;
+    private List<DiskUsage> mountPathStorageUsages;
 
     public ServerStorageSnapshot() {
     }
 
-    public ServerStorageSnapshot(String systemId, String systemName, String serverName, String serverIp, String timestamp, List<MountPathStorageUsage> mountPathStorageUsages) {
+    public ServerStorageSnapshot(String systemId, String systemName, String serverName, String serverIp, String timestamp, List<DiskUsage> mountPathStorageUsages) {
         this.systemId = systemId;
         this.systemName = systemName;
         this.serverName = serverName;
@@ -62,11 +62,11 @@ public class ServerStorageSnapshot {
         this.timestamp = timestamp;
     }
 
-    public List<MountPathStorageUsage> getMountPathStorageUsages() {
+    public List<DiskUsage> getDiskUsages() {
         return mountPathStorageUsages;
     }
 
-    public void setMountPathStorageUsages(List<MountPathStorageUsage> mountPathStorageUsages) {
+    public void setDiskUsages(List<DiskUsage> mountPathStorageUsages) {
         this.mountPathStorageUsages = mountPathStorageUsages;
     }
 }
