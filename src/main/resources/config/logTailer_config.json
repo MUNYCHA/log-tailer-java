@@ -1,31 +1,27 @@
 {
-  "bootstrapServers": "192.168.60.135:9092",
+  "bootstrapServers": "",
 
   "identity": {
     "system": {
-      "id": "system-E",
-      "name": "ប្រព័ន្ធគ្រប់គ្រងទិន្នន័យប្រាក់ខែបុគ្គលិក"
+      "id": "",
+      "name": ""
     },
     "server": {
-      "name": "linux-mint-vm",
-      "ip": "192.168.60.11"
+      "name": "",
+      "ip": ""
     }
   },
   "logTailer": {
     "enabled": true,
     "files": [
-      { "path": "/data/input/logs/app1.log", "topic": "app1-topic" },
-      { "path": "/data/input/logs/app2.log", "topic": "app2-topic" },
-      { "path": "/data/input/logs/app3.log", "topic": "app3-topic" },
-      { "path": "/data/input/logs/app4.log", "topic": "app4-topic" },
-      { "path": "/data/input/logs/system.log", "topic": "system-topic" },
-      { "path": "/data/input/logs/server.log", "topic": "server-topic" }
+      { "path": "/path/to/your/log1.log", "topic": "your-topic-1" },
+      { "path": "/path/to/your/log2.log", "topic": "your-topic-2" }
     ]
   },
   "storageMonitoring": {
     "enabled": true,
     "topic": "server-storage-snapshot",
-    "paths": ["/","/mnt/data-pressure","/mnt/medium-usage","/mnt/high-usage","/run"],
+    "paths": ["/"],
     "intervalHours": 12
   }
 

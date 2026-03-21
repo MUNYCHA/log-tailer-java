@@ -36,3 +36,8 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Production config (supply at runtime via --config=) ###
+**/config/*_prod.json
+**/config/*_production.json
+**/config/*_local.json
