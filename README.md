@@ -5,7 +5,7 @@
 It provides:
 - Continuous tailing of multiple log files → Kafka topics
 - Periodic disk usage snapshots → Kafka topic
-- System and server identity attached to every message
+- Server name attached to log events; system and server identity attached to storage snapshots
 
 ---
 
@@ -48,9 +48,9 @@ java -jar target/log-tailer.jar --config=/path/to/config.json
 ### Config path resolution (in priority order)
 
 1. CLI argument: `--config=/path/to/config.json`
-2. Environment variable: `LOG_TAILER_CONFIG=/path/to/config.json`
-3. JVM property: `-Dlog.tailer.config=/path/to/config.json`
-4. Default: `config/config.json` (relative to working directory)
+2. Environment variable: `LOGTAILER_CONFIG=/path/to/config.json`
+3. JVM property: `-Dlogtailer.config=/path/to/config.json`
+4. Default: `config/logTailer_config.json` (external file first, then bundled classpath resource)
 
 ---
 
@@ -101,7 +101,7 @@ The application reads a single JSON file.
 Kafka broker address(es). Used by all producers.
 
 #### `identity`
-Metadata stamped on every Kafka message.
+Metadata used in published Kafka messages. Log events include `identity.server.name`; storage snapshots include the configured system and server identity fields.
 
 | Field | Description |
 |-------|-------------|
@@ -120,7 +120,7 @@ Metadata stamped on every Kafka message.
 
 - One thread is spawned per configured file
 - If a log file does not exist yet, the tailer waits for it to appear
-- File rotation and truncation are handled automatically
+- Initial startup begins at the end of an existing file; recreated, rotated, or truncated files are read from the beginning
 
 #### `storageMonitoring`
 
@@ -173,7 +173,7 @@ Metadata stamped on every Kafka message.
 
 | Variable | Description |
 |----------|-------------|
-| `LOG_TAILER_CONFIG` | Path to config JSON (alternative to CLI arg) |
+| `LOGTAILER_CONFIG` | Path to config JSON (alternative to CLI arg) |
 | `HOST_FS` | Filesystem prefix for containerized environments (e.g. `/host`). When set, storage paths are resolved as `HOST_FS + path` so the host filesystem can be measured from inside a container. |
 
 ---

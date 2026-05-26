@@ -15,7 +15,9 @@ import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 
@@ -32,6 +34,7 @@ public class LogTailer implements Runnable {
     private final ObjectMapper mapper = new ObjectMapper();
 
     private long filePointer = 0;
+    private Object fileKey;
     private final StringBuilder lineBuffer = new StringBuilder();
     private CharsetDecoder decoder = newDecoder();
 
@@ -61,12 +64,10 @@ public class LogTailer implements Runnable {
                 Thread.sleep(1000);
             }
 
-            raf = openAtEnd();
+            raf = openFile(true);
 
             while (!Thread.currentThread().isInterrupted()) {
 
-                // Fix 1: File disappeared — close raf and wait for reappearance,
-                // then reopen a fresh handle pointing to the new file inode
                 if (!Files.exists(filePath)) {
                     log.warn("Log file disappeared: {}", filePath);
                     closeQuietly(raf);
@@ -79,19 +80,29 @@ public class LogTailer implements Runnable {
                     }
 
                     log.info("Log file reappeared, reopening: {}", filePath);
-                    raf = openAtEnd();
+                    raf = reopenFromBeginning();
+                    if (raf == null) return;
+                    continue;
+                }
+
+                if (hasBeenReplaced()) {
+                    log.info("Log file replaced or rotated, reopening: {}", filePath);
+                    closeQuietly(raf);
+                    clearBuffer();
+                    raf = reopenFromBeginning();
+                    if (raf == null) return;
                     continue;
                 }
 
                 long length = raf.length();
 
-                // File truncated or rotated — reopen from position 0 to capture new content
                 if (length < filePointer) {
-                    log.info("Log file truncated or rotated: {}", filePath);
+                    log.info("Log file truncated, reopening: {}", filePath);
                     closeQuietly(raf);
                     clearBuffer();
-                    raf = new RandomAccessFile(filePath.toFile(), "r");
-                    filePointer = 0;
+                    raf = reopenFromBeginning();
+                    if (raf == null) return;
+                    length = raf.length();
                 }
 
                 // New data available
@@ -116,12 +127,40 @@ public class LogTailer implements Runnable {
     }
 
     /**
-     * Opens the file and positions at the end (tail -f behaviour).
+     * Initial startup skips existing data; reopened files are read from their beginning.
      */
-    private RandomAccessFile openAtEnd() throws IOException {
+    private RandomAccessFile openFile(boolean startAtEnd) throws IOException {
+        Object openedFileKey = readFileKey();
         RandomAccessFile raf = new RandomAccessFile(filePath.toFile(), "r");
-        filePointer = raf.length();
+        fileKey = openedFileKey;
+        filePointer = startAtEnd ? raf.length() : 0;
         return raf;
+    }
+
+    private boolean hasBeenReplaced() throws IOException {
+        Object currentFileKey;
+        try {
+            currentFileKey = readFileKey();
+        } catch (NoSuchFileException e) {
+            return false;
+        }
+        return fileKey != null && currentFileKey != null && !fileKey.equals(currentFileKey);
+    }
+
+    private Object readFileKey() throws IOException {
+        return Files.readAttributes(filePath, BasicFileAttributes.class).fileKey();
+    }
+
+    private RandomAccessFile reopenFromBeginning() throws InterruptedException {
+        while (!Thread.currentThread().isInterrupted()) {
+            try {
+                return openFile(false);
+            } catch (IOException e) {
+                log.warn("Unable to reopen log file yet, retrying: {}", filePath);
+                Thread.sleep(500);
+            }
+        }
+        return null;
     }
 
     /**
