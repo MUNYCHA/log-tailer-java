@@ -23,8 +23,11 @@ public class KafkaProducerFactory {
         // Fast message acknowledgment
         producerProps.put(ProducerConfig.ACKS_CONFIG, "1");
 
-        // Send immediately with no artificial delay
-        producerProps.put(ProducerConfig.LINGER_MS_CONFIG, "0");
+        // Batch records written within a small window into one request. Under fast logs this
+        // collapses thousands of per-line network calls into far fewer, keeping CPU low. A
+        // line reaches the broker at most 5ms later, which is invisible next to the file poll.
+        producerProps.put(ProducerConfig.LINGER_MS_CONFIG, "5");
+        producerProps.put(ProducerConfig.BATCH_SIZE_CONFIG, "65536");
     }
 
 

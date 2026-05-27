@@ -25,9 +25,16 @@ public class LogTailer implements Runnable {
 
     private static final Logger log = LoggerFactory.getLogger(LogTailer.class);
     private static final int MAX_LINE_LENGTH = 1024 * 1024; // 1 MB
-    private static final int READ_BUFFER_SIZE = 4096;
+    private static final int READ_BUFFER_SIZE = 64 * 1024;  // 64 KB
+
+    // Rotation/existence checks each do a stat() syscall; running them every poll wastes
+    // I/O on the hot path. Run them roughly every 5s (25 * 200ms) instead.
+    private static final int ROTATION_CHECK_CYCLES = 25;
+    private static final long POLL_INTERVAL_MS = 200;
+    private static final long ERROR_LOG_INTERVAL_MS = 5000;
 
     private final Path filePath;
+    private final String filePathStr;
     private final String topic;
     private final String serverName;
     private final KafkaProducer<String, String> producer;
@@ -38,6 +45,17 @@ public class LogTailer implements Runnable {
     private final StringBuilder lineBuffer = new StringBuilder();
     private CharsetDecoder decoder = newDecoder();
 
+    // Reused once-allocated read buffers (no per-read garbage). byteBuffer is kept in fill
+    // mode and compacted after each decode so a multibyte char split across a read boundary
+    // is carried into the next read instead of being dropped.
+    private final byte[] rawBytes = new byte[READ_BUFFER_SIZE];
+    private final ByteBuffer byteBuffer = ByteBuffer.wrap(rawBytes);
+    private final CharBuffer charBuffer = CharBuffer.allocate(READ_BUFFER_SIZE);
+
+    // Throttled delivery-failure logging (callbacks run on the single producer network thread).
+    private long deliveryFailures = 0;
+    private long lastErrorLogMs = 0;
+
     public LogTailer(
             Path filePath,
             String topic,
@@ -45,6 +63,7 @@ public class LogTailer implements Runnable {
             KafkaProducer<String, String> producer
     ) {
         this.filePath = filePath;
+        this.filePathStr = filePath.toString();
         this.topic = topic;
         this.serverName = serverName;
         this.producer = producer;
@@ -55,72 +74,76 @@ public class LogTailer implements Runnable {
         log.info("Starting log tailer: {} -> topic: {}", filePath, topic);
 
         RandomAccessFile raf = null;
+        boolean startAtEnd = true; // only the very first open skips existing content
+        int cycle = 0;
 
         try {
-            // Fix 3: Wait for file to appear instead of permanently exiting the thread
-            while (!Files.exists(filePath)) {
-                if (Thread.currentThread().isInterrupted()) return;
-                log.warn("Waiting for log file to appear: {}", filePath);
-                Thread.sleep(1000);
-            }
-
-            raf = openFile(true);
-
             while (!Thread.currentThread().isInterrupted()) {
+                try {
+                    if (raf == null) {
+                        if (!Files.exists(filePath)) {
+                            log.warn("Waiting for log file to appear: {}", filePath);
+                            Thread.sleep(1000);
+                            continue;
+                        }
+                        raf = openFile(startAtEnd);
+                        startAtEnd = false;
+                    }
 
-                if (!Files.exists(filePath)) {
-                    log.warn("Log file disappeared: {}", filePath);
+                    // Periodic rotation/disappearance detection (off the hot path).
+                    if (++cycle % ROTATION_CHECK_CYCLES == 0) {
+                        if (!Files.exists(filePath)) {
+                            log.warn("Log file disappeared: {}", filePath);
+                            closeQuietly(raf);
+                            raf = null;
+                            clearBuffer();
+                            continue;
+                        }
+                        if (hasBeenReplaced()) {
+                            log.info("Log file replaced or rotated, reopening: {}", filePath);
+                            closeQuietly(raf);
+                            raf = null;
+                            clearBuffer();
+                            continue;
+                        }
+                    }
+
+                    long length = raf.length();
+
+                    if (length < filePointer) {
+                        log.info("Log file truncated, reopening: {}", filePath);
+                        closeQuietly(raf);
+                        raf = null;
+                        clearBuffer();
+                        continue;
+                    }
+
+                    if (length > filePointer) {
+                        raf.seek(filePointer);
+                        readNewBytes(raf);
+                        filePointer = raf.getFilePointer();
+                    }
+
+                    Thread.sleep(POLL_INTERVAL_MS);
+
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+
+                } catch (Exception e) {
+                    // Self-heal: log and retry instead of letting the thread die permanently.
+                    log.error("Recoverable error in log tailer for {}, retrying", filePath, e);
                     closeQuietly(raf);
                     raf = null;
                     clearBuffer();
-
-                    while (!Files.exists(filePath)) {
-                        if (Thread.currentThread().isInterrupted()) return;
-                        Thread.sleep(500);
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return;
                     }
-
-                    log.info("Log file reappeared, reopening: {}", filePath);
-                    raf = reopenFromBeginning();
-                    if (raf == null) return;
-                    continue;
                 }
-
-                if (hasBeenReplaced()) {
-                    log.info("Log file replaced or rotated, reopening: {}", filePath);
-                    closeQuietly(raf);
-                    clearBuffer();
-                    raf = reopenFromBeginning();
-                    if (raf == null) return;
-                    continue;
-                }
-
-                long length = raf.length();
-
-                if (length < filePointer) {
-                    log.info("Log file truncated, reopening: {}", filePath);
-                    closeQuietly(raf);
-                    clearBuffer();
-                    raf = reopenFromBeginning();
-                    if (raf == null) return;
-                    length = raf.length();
-                }
-
-                // New data available
-                if (length > filePointer) {
-                    raf.seek(filePointer);
-                    readNewBytes(raf);
-                    filePointer = raf.getFilePointer();
-                }
-
-                Thread.sleep(200);
             }
-
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-
-        } catch (Exception e) {
-            log.error("Fatal error in log tailer for: {}", filePath, e);
-
         } finally {
             closeQuietly(raf);
         }
@@ -151,23 +174,12 @@ public class LogTailer implements Runnable {
         return Files.readAttributes(filePath, BasicFileAttributes.class).fileKey();
     }
 
-    private RandomAccessFile reopenFromBeginning() throws InterruptedException {
-        while (!Thread.currentThread().isInterrupted()) {
-            try {
-                return openFile(false);
-            } catch (IOException e) {
-                log.warn("Unable to reopen log file yet, retrying: {}", filePath);
-                Thread.sleep(500);
-            }
-        }
-        return null;
-    }
-
     /**
-     * Clears the line buffer and resets the UTF-8 decoder state for a fresh file.
+     * Clears the line buffer, the byte carry-over buffer, and resets the decoder state.
      */
     private void clearBuffer() {
         lineBuffer.setLength(0);
+        byteBuffer.clear();
         decoder = newDecoder();
     }
 
@@ -184,27 +196,32 @@ public class LogTailer implements Runnable {
     }
 
     /**
-     * Fix 2: Uses a stateful streaming CharsetDecoder so multi-byte UTF-8 characters
-     * split across read-buffer boundaries are decoded correctly without corruption.
+     * Streams bytes through a stateful CharsetDecoder. The byteBuffer is filled, decoded,
+     * then compacted so any trailing bytes of a multibyte UTF-8 char that was split across
+     * the read boundary are preserved for the next read instead of being lost.
      */
     private void readNewBytes(RandomAccessFile raf) throws IOException {
-        byte[] rawBytes = new byte[READ_BUFFER_SIZE];
-        CharBuffer charBuffer = CharBuffer.allocate(READ_BUFFER_SIZE * 2);
         int read;
+        while (byteBuffer.hasRemaining()
+                && (read = raf.read(rawBytes, byteBuffer.position(), byteBuffer.remaining())) > 0) {
 
-        while ((read = raf.read(rawBytes)) > 0) {
-            ByteBuffer in = ByteBuffer.wrap(rawBytes, 0, read);
+            byteBuffer.position(byteBuffer.position() + read);
+            byteBuffer.flip();
+
             charBuffer.clear();
-            decoder.decode(in, charBuffer, false);
+            decoder.decode(byteBuffer, charBuffer, false);
             charBuffer.flip();
             lineBuffer.append(charBuffer);
+
+            byteBuffer.compact(); // keep undecoded trailing bytes for the next read
             flushCompleteLines();
         }
     }
 
     /**
-     * Fix 4: Sends only complete lines to Kafka.
-     * Guards against unbounded lineBuffer growth when no newline is encountered.
+     * Sends only complete lines to Kafka. Uses a single compaction of the line buffer after
+     * extracting all complete lines, avoiding O(n) shifts per line. Guards against unbounded
+     * lineBuffer growth when no newline is encountered.
      */
     private void flushCompleteLines() {
 
@@ -216,12 +233,13 @@ public class LogTailer implements Runnable {
             return;
         }
 
+        int readOffset = 0;
         int index;
-        while ((index = lineBuffer.indexOf("\n")) >= 0) {
-            String line = lineBuffer.substring(0, index);
-            lineBuffer.delete(0, index + 1);
+        while ((index = lineBuffer.indexOf("\n", readOffset)) >= 0) {
+            String line = lineBuffer.substring(readOffset, index);
+            readOffset = index + 1;
 
-            // Fix 8: Strip BOM and \r only — trim() is NOT used because it removes
+            // Strip BOM and \r only — trim() is NOT used because it removes
             // intentional leading/trailing whitespace (e.g. indented stack traces)
             String msg = line
                     .replace("\uFEFF", "")
@@ -233,13 +251,17 @@ public class LogTailer implements Runnable {
 
             sendToKafka(msg);
         }
+
+        if (readOffset > 0) {
+            lineBuffer.delete(0, readOffset);
+        }
     }
 
     private void sendToKafka(String msg) {
         try {
             LogEvent event = new LogEvent(
                     serverName,
-                    filePath.toString(),
+                    filePathStr,
                     topic,
                     DateTimeFormatter.ISO_INSTANT.format(Instant.now()),
                     msg
@@ -249,11 +271,18 @@ public class LogTailer implements Runnable {
 
             producer.send(
                     new ProducerRecord<>(this.topic, this.serverName, payload),
-                    // Fix 5 & 7: Log Kafka delivery failures via SLF4J with full context
+                    // Throttled failure logging: at most one aggregated error per interval, so a
+                    // broker outage cannot flood synchronous stderr and worsen the load.
                     (metadata, ex) -> {
                         if (ex != null) {
-                            log.error("Failed to deliver to Kafka | topic={} file={} error={}",
-                                    topic, filePath, ex.getMessage());
+                            this.deliveryFailures++;
+                            long now = System.currentTimeMillis();
+                            if (now - this.lastErrorLogMs >= ERROR_LOG_INTERVAL_MS) {
+                                log.error("Kafka delivery failing | topic={} file={} failuresSinceLastLog={} lastError={}",
+                                        topic, filePath, this.deliveryFailures, ex.getMessage());
+                                this.lastErrorLogMs = now;
+                                this.deliveryFailures = 0;
+                            }
                         }
                     }
             );
