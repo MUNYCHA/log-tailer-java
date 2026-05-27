@@ -41,9 +41,59 @@ target/log-tailer.jar
 
 ## Run
 
+There are three supported ways to launch the app, depending on where you are:
+
+| Method | When to use | Memory guardrails |
+|--------|-------------|-------------------|
+| **A. `run.sh` (local/dev)** | Testing on your own machine | JVM heap cap (`-Xmx256m`) |
+| **B. systemd service (recommended for prod)** | The admin runs it as a long-lived service | JVM heap cap **+** kernel hard cap (`MemoryMax=512M`, `MemorySwapMax=0`) |
+| **C. `run.sh` on a server (no systemd)** | A server that doesn't use systemd | JVM heap cap only |
+
+> **Never run `java -jar target/log-tailer.jar` directly on a shared server.**
+> A bare launch lets the JVM grow its heap to 25% of the machine's RAM and uses
+> a GC that does not return memory to the OS, so over time it can slow down the
+> whole host. Every method below applies `-Xmx256m -XX:+UseG1GC` to prevent this.
+
+### Method A — `run.sh` (local / dev)
+
 ```bash
-java -jar target/log-tailer.jar --config=/path/to/config.json
+./run.sh --config=/path/to/config.json
 ```
+
+By default `run.sh` launches `target/log-tailer.jar` (where `mvn package` puts
+it). If the jar lives elsewhere, point at it with `JAR=` — no need to edit the
+script:
+
+```bash
+JAR=/opt/log-tailer/log-tailer.jar ./run.sh --config=/path/to/config.json
+```
+
+Override the heap if needed:
+
+```bash
+JVM_MAX_HEAP=512m ./run.sh --config=/path/to/config.json
+```
+
+### Method B — systemd service (recommended for production)
+
+See [Production deployment (systemd)](#production-deployment-systemd) below. This
+is the right choice when the admin runs the tool **as a service**: it starts on
+boot, restarts on crash, and enforces a hard kernel memory cap. The JVM flags are
+baked into the unit's `ExecStart`, so it can never be launched bare by accident.
+
+### Method C — `run.sh` on a server without systemd
+
+If a server doesn't use systemd, copy the jar, the config, **and `run.sh`** to the
+box and launch it (e.g. under `nohup` or a process manager):
+
+```bash
+nohup env JAR=/opt/log-tailer/log-tailer.jar \
+  ./run.sh --config=/opt/log-tailer/config.json >/var/log/log-tailer.out 2>&1 &
+```
+
+> Note: this gives you the `-Xmx` heap cap but **not** the kernel-level
+> `MemoryMax`/`MemorySwapMax` hard wall, and nothing restarts it on crash. Prefer
+> Method B whenever systemd is available.
 
 ### Config path resolution (in priority order)
 
@@ -51,6 +101,88 @@ java -jar target/log-tailer.jar --config=/path/to/config.json
 2. Environment variable: `LOGTAILER_CONFIG=/path/to/config.json`
 3. JVM property: `-Dlogtailer.config=/path/to/config.json`
 4. Default: `config/logTailer_config.json` (external file first, then bundled classpath resource)
+
+---
+
+## Production deployment (systemd)
+
+For a real server, run it under systemd so it restarts on failure and the kernel
+enforces a hard memory limit — a second wall behind the JVM's `-Xmx`. A unit file
+is provided at [`deploy/log-tailer.service`](deploy/log-tailer.service).
+
+**No repo clone needed on the server.** Copy just three files from the build
+machine: the jar, your real config, and `log-tailer.service`. `run.sh` is **not**
+used here — the JVM flags live inside the unit's `ExecStart`. Adjust the two paths
+and the `User=` in the unit if your layout differs.
+
+```bash
+# 1. Create a dedicated unprivileged user that can READ the log files and reach Kafka
+sudo useradd --system --no-create-home logtailer
+sudo adduser logtailer adm        # 'adm' usually owns /var/log
+
+# 2. Place the artifact and the REAL config (not the repo's empty template)
+sudo install -D target/log-tailer.jar /opt/log-tailer/log-tailer.jar
+sudo install -D -m 600 your-config.json /etc/log-tailer/config.json
+sudo chown logtailer:logtailer /etc/log-tailer/config.json
+
+# 3. Install and start the service
+sudo cp deploy/log-tailer.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now log-tailer
+```
+
+The unit caps resources so a misbehaving process can never starve the host:
+`MemoryMax=512M` + `MemorySwapMax=0` (kernel kills + restarts instead of swapping
+the box), `CPUQuota=50%`, and `Nice=10` (yields CPU to other apps). It also runs
+with filesystem hardening (`ProtectSystem=strict`, `ProtectHome=read-only`,
+`NoNewPrivileges`) since the tool only ever reads.
+
+> **Check the Java path first.** The unit's `ExecStart` uses `/usr/bin/java`,
+> which is correct for a system-installed JDK. Run `which java` on the server; if
+> it prints a different path, edit that line in the unit to match.
+
+Watch it after deploy:
+
+```bash
+journalctl -u log-tailer -f          # logs / errors
+systemctl status log-tailer          # current memory usage vs. the limit
+```
+
+### Verifying the memory limit
+
+The `MemoryMax=512M` + `MemorySwapMax=0` settings are only enforced if the host's
+cgroup **memory controller** is active. It is by default on modern Linux
+(Ubuntu 22.04+, Debian 11+, RHEL/Rocky/Alma 9+, Fedora 31+). Confirm after deploy:
+
+```bash
+# 1. The kernel must list the memory controller
+cat /sys/fs/cgroup/cgroup.controllers          # output must contain: memory
+
+# 2. systemd must report the limits on the unit
+systemctl show log-tailer -p MemoryMax -p MemorySwapMax
+# expect: MemoryMax=536870912   MemorySwapMax=0   (NOT "infinity")
+
+# 3. The cgroup file must show the real number, not "max"
+cat /sys/fs/cgroup/system.slice/log-tailer.service/memory.max   # expect: 536870912
+```
+
+To prove the cap actually kills an over-budget process **without touching prod**,
+run a deliberate memory eater under the same limits on any machine:
+
+```bash
+systemd-run --scope -p MemoryMax=512M -p MemorySwapMax=0 \
+  python3 -c 'import time
+c=[]
+mb=0
+while True:
+    c.append(bytearray(20*1024*1024)); mb+=20
+    print(mb,"MB",flush=True); time.sleep(0.05)'
+```
+
+It climbs to ~500 MB and is OOM-killed; the journal records `512M memory peak`
+and `result oom-kill`. That confirms the process can never exceed 512 MB of RAM
+and cannot spill into swap. (Use `sudo` for a system-wide scope, or `--user` if
+the memory controller is delegated to your user manager.)
 
 ---
 

@@ -1,0 +1,54 @@
+[Unit]
+Description=Log Tailer -> Kafka
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Run as a dedicated unprivileged user, never root. The user must be able to
+# READ the configured log files (e.g. add it to the 'adm' group) and reach Kafka.
+User=logtailer
+Group=logtailer
+
+# Bounded JVM. -Xmx is the primary cap; the systemd MemoryMax below is a second
+# wall enforced by the kernel in case the JVM is ever launched without -Xmx.
+# NOTE: ExecStart needs an ABSOLUTE path to java. /usr/bin/java is correct for a
+# system-installed JDK (apt/yum). If `which java` on this server prints something
+# else, change the path below to match.
+ExecStart=/usr/bin/java \
+  -Xms64m -Xmx256m \
+  -XX:+UseG1GC -XX:MaxGCPauseMillis=200 \
+  -XX:+ExitOnOutOfMemoryError \
+  -jar /opt/log-tailer/log-tailer.jar \
+  --config=/etc/log-tailer/config.json
+
+# OS-enforced resource guardrails. These protect the rest of the host: if the
+# process misbehaves the kernel throttles or kills it instead of letting it
+# starve other applications.
+MemoryMax=512M
+MemorySwapMax=0
+CPUQuota=50%
+Nice=10
+
+# Restart on crash (including an OOM kill), but back off so a persistent failure
+# can't become a tight restart loop.
+Restart=on-failure
+RestartSec=5
+
+# The app's JVM shutdown hook flushes Kafka and stops threads within ~15s on
+# SIGTERM; give it a little headroom before systemd escalates to SIGKILL.
+TimeoutStopSec=20
+
+# Security hardening. This is a read-only log shipper: it never writes to disk
+# (output goes to the journal), so we can lock the filesystem down tightly.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target
